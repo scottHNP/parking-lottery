@@ -107,7 +107,6 @@
   </main>
 
   <script>
-    // ⚠️ 已自動內建您提供的 Apps Script 網址
     const WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbz8O6Sq52RmlzjAYkLTvzjw6F015VttyKSF-RHxC2yNAMdtTL4sAPvFQWQZKolW5IA2/exec";
 
     const SPOTS_CONFIG = {
@@ -145,6 +144,7 @@
       renderAll();
     }
 
+    // 計算目前還剩哪些實際車位可抽（排除槓龜）
     function getAvailableSpots(typeLabel) {
       const config = Object.values(SPOTS_CONFIG).find(c => c.label === typeLabel);
       if (!config) return [];
@@ -179,6 +179,7 @@
       const available = getAvailableSpots(typeLabel);
       const allPossibleSpots = SPOTS_CONFIG[currentTab].spots;
 
+      // 🎬 抽籤跳動動畫 (2秒)
       const animInterval = setInterval(() => {
         const randomSpot = allPossibleSpots[Math.floor(Math.random() * allPossibleSpots.length)];
         slotDisplay.innerHTML = `<span class="text-4xl font-black text-amber-300 animate-pulse">${randomSpot}</span>`;
@@ -190,6 +191,7 @@
         let spot = "";
         let isGongge = false;
 
+        // 車位若空了直接判定槓龜
         if (available.length === 0) {
           spot = "槓龜 (已額滿)";
           isGongge = true;
@@ -213,13 +215,12 @@
 
         document.getElementById('resultActions').classList.remove('hidden');
 
+        // 🚀 使用 JSONP 確保雲端確實寫入資料，不被 CORS 擋住
         try {
-          await fetch(WEBHOOK_URL, {
-            method: 'POST',
-            mode: 'no-cors',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(record)
-          });
+          const jsonpUrl = `${WEBHOOK_URL}?callback=handlePostDummy&typeLabel=${encodeURIComponent(typeLabel)}&spot=${encodeURIComponent(spot)}&unit=${encodeURIComponent(unit)}&name=${encodeURIComponent(name)}&time=${encodeURIComponent(time)}&t=${Date.now()}`;
+          const postScript = document.createElement('script');
+          postScript.src = jsonpUrl;
+          document.body.appendChild(postScript);
         } catch (e) {
           console.warn("寫入雲端錯誤", e);
         }
@@ -231,8 +232,13 @@
         drawBtn.disabled = false;
         drawBtn.classList.remove('opacity-50', 'cursor-not-allowed');
 
+        // 1.5 秒後重新向雲端拉取最新資料更新看板與表格
         setTimeout(loadCloudData, 1500);
       }, 2000);
+    }
+
+    function handlePostDummy(res) {
+      // 接收寫入成功回呼
     }
 
     function resetCloudRecords() {
