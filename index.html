@@ -471,7 +471,7 @@
     }
 
     async function sendToWebhook(record) {
-      const url = localStorage.getItem(WEBHOOK_KEY);
+      const url = "https://script.google.com/macros/s/AKfycbz8O6Sq52RmlzjAYkLTvzjw6F015VttYkSF-RHxC2yNAMdtTL4sAPvFQWQZKoIW5lA2/exec";
       if (!url) return;
       try {
         await fetch(url, {
