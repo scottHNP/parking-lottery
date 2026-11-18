@@ -20,7 +20,7 @@
         <span class="text-2xl">🏢</span>
         <div>
           <h1 class="text-lg sm:text-xl font-bold tracking-wide">大樓停車位抽籤系統</h1>
-          <p class="text-xs text-slate-400">雲端同步即時抽籤</p>
+          <p class="text-xs text-slate-400">雲端同步即時抽籤（含防超抽與槓龜機制）</p>
         </div>
       </div>
       <div class="flex items-center gap-2 bg-slate-800 border border-slate-700 px-3 py-1.5 rounded-full text-xs">
@@ -46,7 +46,7 @@
           <div>
             <span id="categoryTag" class="inline-block px-3 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-700 mb-2">目前抽籤：汽車車位</span>
             <h2 class="text-2xl font-black text-slate-800">請填寫住戶資訊</h2>
-            <p class="text-sm text-slate-500 mt-1">每戶每類別限抽一次，送出後直接由雲端隨機指派。</p>
+            <p class="text-sm text-slate-500 mt-1">每戶每類別限抽一次。若車位已滿將自動抽中「槓龜」。</p>
           </div>
           <div class="space-y-4">
             <div>
@@ -119,7 +119,6 @@
     let records = [];
     let lastDrawResult = null;
 
-    // JSONP 讀取雲端資料
     function loadCloudData() {
       const scriptId = 'jsonp_script_tag';
       const oldScript = document.getElementById(scriptId);
@@ -153,7 +152,6 @@
       return config.spots.filter(s => !taken.includes(s));
     }
 
-    // 🎲 開始抽籤（跳動動畫 + 雲端寫入）
     async function startDraw() {
       const unit = document.getElementById('unitInput').value.trim();
       const name = document.getElementById('nameInput').value.trim();
@@ -166,13 +164,7 @@
 
       const exists = records.find(r => r.unit === unit && r.typeLabel === typeLabel);
       if (exists) {
-        alert(`住戶 ${unit} 已經抽過${typeLabel}囉！中籤車位為：${exists.spot}`);
-        return;
-      }
-
-      const available = getAvailableSpots(typeLabel);
-      if (available.length === 0) {
-        alert(`目前 ${typeLabel} 已經全部抽完了！`);
+        alert(`住戶 ${unit} 已經抽過${typeLabel}囉！結果為：${exists.spot}`);
         return;
       }
 
@@ -184,8 +176,10 @@
       const winnerSubtext = document.getElementById('winnerSubtext');
       winnerSubtext.textContent = `正在為 ${unit} ${name} 隨機抽籤中...`;
 
-      // 🎬 數字隨機跳動動畫（2秒）
+      const available = getAvailableSpots(typeLabel);
       const allPossibleSpots = SPOTS_CONFIG[currentTab].spots;
+
+      // 🎬 抽籤動畫 (2秒)
       const animInterval = setInterval(() => {
         const randomSpot = allPossibleSpots[Math.floor(Math.random() * allPossibleSpots.length)];
         slotDisplay.innerHTML = `<span class="text-4xl font-black text-amber-300 animate-pulse">${randomSpot}</span>`;
@@ -194,19 +188,34 @@
       setTimeout(async () => {
         clearInterval(animInterval);
 
-        const spot = available[Math.floor(Math.random() * available.length)];
+        let spot = "";
+        let isGongge = false;
+
+        // 🛑 核心防超抽與槓龜機制
+        if (available.length === 0) {
+          spot = "槓龜 (已額滿)";
+          isGongge = true;
+        } else {
+          spot = available[Math.floor(Math.random() * available.length)];
+        }
+
         const time = new Date().toLocaleString("zh-TW", { hour12: false });
         const record = { typeLabel, spot, unit, name, time };
 
-        slotDisplay.innerHTML = `<span class="text-4xl font-black text-emerald-400">${spot}</span>`;
-        winnerSubtext.innerHTML = `<span class="text-emerald-300 font-bold">${unit} ${name}</span> 成功抽中 ${typeLabel}！`;
-        document.getElementById('resultActions').classList.remove('hidden');
-
-        if (typeof confetti === 'function') {
-          confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+        if (isGongge) {
+          slotDisplay.innerHTML = `<span class="text-2xl font-black text-rose-400">❌ 槓龜 (已額滿)</span>`;
+          winnerSubtext.innerHTML = `<span class="text-rose-300 font-bold">${unit} ${name}</span> 很抱歉，${typeLabel}已抽完`;
+        } else {
+          slotDisplay.innerHTML = `<span class="text-4xl font-black text-emerald-400">${spot}</span>`;
+          winnerSubtext.innerHTML = `<span class="text-emerald-300 font-bold">${unit} ${name}</span> 成功抽中 ${typeLabel}！`;
+          if (typeof confetti === 'function') {
+            confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+          }
         }
 
-        // 🚀 同步寫入雲端試算表 (POST)
+        document.getElementById('resultActions').classList.remove('hidden');
+
+        // 🚀 確實將資料透過 POST 寫入 Google 試算表（修正 mode 為 cors 確保雲端紀錄）
         try {
           await fetch(WEBHOOK_URL, {
             method: 'POST',
@@ -225,16 +234,14 @@
         drawBtn.disabled = false;
         drawBtn.classList.remove('opacity-50', 'cursor-not-allowed');
 
-        // 1.5 秒後重新向雲端拉取最新資料
         setTimeout(loadCloudData, 1500);
       }, 2000);
     }
 
-    // 🗑️ 重置所有紀錄功能
     function resetCloudRecords() {
       const pwd = prompt("請輸入管理員重置密碼：");
       if (pwd === "8888") {
-        if (confirm("確定要清空所有抽籤紀錄嗎？此動作將會清除雲端試算表上的資料！")) {
+        if (confirm("確定要清空所有抽籤紀錄嗎？")) {
           const scriptId = 'jsonp_reset_tag';
           const oldScript = document.getElementById(scriptId);
           if (oldScript) oldScript.remove();
@@ -256,7 +263,7 @@
 
     function shareToLine() {
       if (!lastDrawResult) return;
-      const text = `【大樓停車位抽籤結果】\n類別：${lastDrawResult.typeLabel}\n戶號：${lastDrawResult.unit}\n姓名：${lastDrawResult.name}\n中籤車位：${lastDrawResult.spot}`;
+      const text = `【大樓停車位抽籤結果】\n類別：${lastDrawResult.typeLabel}\n戶號：${lastDrawResult.unit}\n姓名：${lastDrawResult.name}\n抽籤結果：${lastDrawResult.spot}`;
       window.open(`https://line.me/R/msg/text/?${encodeURIComponent(text)}`, '_blank');
     }
 
@@ -264,8 +271,8 @@
       const config = SPOTS_CONFIG[currentTab];
       document.getElementById('boardTitle').textContent = `${config.label}即時狀態看板`;
       
-      const carAvail = SPOTS_CONFIG.car.spots.length - records.filter(r => r.typeLabel === '汽車車位').length;
-      const motoAvail = SPOTS_CONFIG.moto.spots.length - records.filter(r => r.typeLabel === '機車車位').length;
+      const carAvail = SPOTS_CONFIG.car.spots.length - records.filter(r => r.typeLabel === '汽車車位' && !r.spot.includes('槓龜')).length;
+      const motoAvail = SPOTS_CONFIG.moto.spots.length - records.filter(r => r.typeLabel === '機車車位' && !r.spot.includes('槓龜')).length;
       document.getElementById('carCountBadge').textContent = `剩 ${carAvail} 格`;
       document.getElementById('motoCountBadge').textContent = `剩 ${motoAvail} 格`;
 
@@ -285,14 +292,15 @@
       });
 
       const tbody = document.getElementById('recordsTableBody');
-      if (records.length === 0) {
+      const validRecords = records.filter(r => r.typeLabel === config.label);
+      if (validRecords.length === 0) {
         tbody.innerHTML = '<tr><td colspan="5" class="py-6 text-center text-slate-400">尚無抽籤紀錄</td></tr>';
         return;
       }
       tbody.innerHTML = records.map(r => `
         <tr class="hover:bg-slate-50 transition">
           <td class="py-3 px-4"><span class="px-2 py-0.5 rounded-full text-xs font-bold ${r.typeLabel === '汽車車位' ? 'bg-blue-100 text-blue-700' : 'bg-teal-100 text-teal-700'}">${r.typeLabel}</span></td>
-          <td class="py-3 px-4 font-black">${r.spot}</td>
+          <td class="py-3 px-4 font-black ${r.spot.includes('槓龜') ? 'text-rose-500' : ''}">${r.spot}</td>
           <td class="py-3 px-4 font-bold text-slate-700">${r.unit}</td>
           <td class="py-3 px-4 text-slate-700">${r.name}</td>
           <td class="py-3 px-4 text-xs text-slate-500">${r.time}</td>
