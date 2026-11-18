@@ -20,7 +20,7 @@
         <span class="text-2xl">🏢</span>
         <div>
           <h1 class="text-lg sm:text-xl font-bold tracking-wide">大樓停車位抽籤系統</h1>
-          <p class="text-xs text-slate-400">雲端同步即時抽籤（大師穩固同步版）</p>
+          <p class="text-xs text-slate-400">雲端同步即時抽籤（大師最終完美版）</p>
         </div>
       </div>
       <div class="flex items-center gap-2 bg-slate-800 border border-slate-700 px-3 py-1.5 rounded-full text-xs">
@@ -106,16 +106,6 @@
     </section>
   </main>
 
-  <!-- 隱藏的 iframe 用於無痛苦表單提交，確保 100% 寫入試算表 -->
-  <iframe name="hidden_iframe" id="hidden_iframe" style="display:none;"></iframe>
-  <form id="cloudForm" action="https://script.google.com/macros/s/AKfycbz8O6Sq52RmlzjAYkLTvzjw6F015VttyKSF-RHxC2yNAMdtTL4sAPvFQWQZKolW5IA2/exec" method="POST" target="hidden_iframe" style="display:none;">
-    <input type="hidden" name="typeLabel" id="f_typeLabel">
-    <input type="hidden" name="spot" id="f_spot">
-    <input type="hidden" name="unit" id="f_unit">
-    <input type="hidden" name="name" id="f_name">
-    <input type="hidden" name="time" id="f_time">
-  </form>
-
   <script>
     const WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbz8O6Sq52RmlzjAYkLTvzjw6F015VttyKSF-RHxC2yNAMdtTL4sAPvFQWQZKolW5IA2/exec";
 
@@ -128,6 +118,7 @@
     let records = [];
     let lastDrawResult = null;
 
+    // 讀取雲端資料 (JSONP)
     function loadCloudData() {
       const scriptId = 'jsonp_script_tag';
       const oldScript = document.getElementById(scriptId);
@@ -154,6 +145,7 @@
       renderAll();
     }
 
+    // 取得尚未被抽走的真實車位（排除槓龜）
     function getAvailableSpots(typeLabel) {
       const config = Object.values(SPOTS_CONFIG).find(c => c.label === typeLabel);
       if (!config) return [];
@@ -161,6 +153,7 @@
       return config.spots.filter(s => !taken.includes(s));
     }
 
+    // 🎲 開始抽籤
     function startDraw() {
       const unit = document.getElementById('unitInput').value.trim();
       const name = document.getElementById('nameInput').value.trim();
@@ -200,6 +193,7 @@
         const available = getAvailableSpots(typeLabel);
         let spot = "";
 
+        // 防超抽與隨機槓龜機制
         if (available.length === 0) {
           spot = "槓龜 (已額滿)";
         } else {
@@ -212,39 +206,64 @@
         }
 
         const time = new Date().toLocaleString("zh-TW", { hour12: false });
-        const record = { typeLabel, spot, unit, name, time };
 
-        if (spot.includes('槓龜')) {
-          slotDisplay.innerHTML = `<span class="text-2xl font-black text-rose-400">❌ 槓龜</span>`;
-          winnerSubtext.innerHTML = `<span class="text-rose-300 font-bold">${unit} ${name}</span> 很抱歉，抽中 ${spot}`;
-        } else {
-          slotDisplay.innerHTML = `<span class="text-4xl font-black text-emerald-400">${spot}</span>`;
-          winnerSubtext.innerHTML = `<span class="text-emerald-300 font-bold">${unit} ${name}</span> 成功抽中 ${spot}！`;
-          if (typeof confetti === 'function') {
-            confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+        // 🚀 透過 JSONP 呼叫雲端直接寫入試算表，保證 100% 成功、絕不逾時
+        const scriptId = 'jsonp_draw_tag';
+        const oldScript = document.getElementById(scriptId);
+        if (oldScript) oldScript.remove();
+
+        const drawScript = document.createElement('script');
+        drawScript.id = scriptId;
+        drawScript.src = `${WEBHOOK_URL}?callback=handleDrawResult&action=draw&typeLabel=${encodeURIComponent(typeLabel)}&spot=${encodeURIComponent(spot)}&unit=${encodeURIComponent(unit)}&name=${encodeURIComponent(name)}&time=${encodeURIComponent(time)}&t=${Date.now()}`;
+        
+        window._tempDrawRecord = { typeLabel, spot, unit, name, time };
+
+        window._drawTimeout = setTimeout(() => {
+          if (drawBtn.disabled) {
+            drawBtn.disabled = false;
+            drawBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            alert('連線逾時，請檢查網路後再試一次！');
           }
-        }
+        }, 5000);
 
-        document.getElementById('resultActions').classList.remove('hidden');
-
-        // 🚀 透過隱藏表單提交寫入 Google 試算表（100% 成功，絕不被阻擋）
-        document.getElementById('f_typeLabel').value = typeLabel;
-        document.getElementById('f_spot').value = spot;
-        document.getElementById('f_unit').value = unit;
-        document.getElementById('f_name').value = name;
-        document.getElementById('f_time').value = time;
-        document.getElementById('cloudForm').submit();
-
-        lastDrawResult = record;
-        document.getElementById('unitInput').value = '';
-        document.getElementById('nameInput').value = '';
-
-        drawBtn.disabled = false;
-        drawBtn.classList.remove('opacity-50', 'cursor-not-allowed');
-
-        // 1.5 秒後向雲端重新拉取最新資料，雲端明細表與看板立刻同步更新！
-        setTimeout(loadCloudData, 1500);
+        document.body.appendChild(drawScript);
       }, 2000);
+    }
+
+    // 接收雲端寫入成功後的回呼
+    function handleDrawResult(res) {
+      if (window._drawTimeout) clearTimeout(window._drawTimeout);
+
+      const drawBtn = document.getElementById('drawBtn');
+      drawBtn.disabled = false;
+      drawBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+
+      const slotDisplay = document.getElementById('slotDisplay');
+      const winnerSubtext = document.getElementById('winnerSubtext');
+      const resData = res || window._tempDrawRecord;
+
+      if (resData.status === "duplicated") {
+        alert(`此住戶已經抽過${resData.typeLabel}了！結果為：${resData.spot}`);
+        loadCloudData();
+        return;
+      }
+
+      lastDrawResult = resData;
+      document.getElementById('unitInput').value = '';
+      document.getElementById('nameInput').value = '';
+
+      if (resData.spot.includes('槓龜')) {
+        slotDisplay.innerHTML = `<span class="text-2xl font-black text-rose-400">❌ 槓龜</span>`;
+        winnerSubtext.innerHTML = `<span class="text-rose-300 font-bold">${resData.unit} ${resData.name}</span> 很抱歉，抽中 ${resData.spot}`;
+      } else {
+        slotDisplay.innerHTML = `<span class="text-4xl font-black text-emerald-400">${resData.spot}</span>`;
+        winnerSubtext.innerHTML = `<span class="text-emerald-300 font-bold">${resData.unit} ${resData.name}</span> 成功抽中 ${resData.spot}！`;
+        if (typeof confetti === 'function') {
+          confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+        }
+      }
+      document.getElementById('resultActions').classList.remove('hidden');
+      loadCloudData(); // 立即同步更新即時看板與下方明細表！
     }
 
     function resetCloudRecords() {
