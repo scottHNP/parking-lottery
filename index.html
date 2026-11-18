@@ -20,7 +20,7 @@
         <span class="text-2xl">🏢</span>
         <div>
           <h1 class="text-lg sm:text-xl font-bold tracking-wide">大樓停車位抽籤系統</h1>
-          <p class="text-xs text-slate-400">雲端同步即時抽籤（穩定流暢版）</p>
+          <p class="text-xs text-slate-400">雲端同步即時抽籤（防超抽與同步版）</p>
         </div>
       </div>
       <div class="flex items-center gap-2 bg-slate-800 border border-slate-700 px-3 py-1.5 rounded-full text-xs">
@@ -118,7 +118,6 @@
     let records = [];
     let lastDrawResult = null;
 
-    // JSONP 讀取雲端資料
     function loadCloudData() {
       const scriptId = 'jsonp_script_tag';
       const oldScript = document.getElementById(scriptId);
@@ -153,7 +152,6 @@
       return config.spots.filter(s => !taken.includes(s));
     }
 
-    // 🎲 點擊抽籤：前端流暢動畫 + 公平隨機（含中途隨機槓龜機制）
     async function startDraw() {
       const unit = document.getElementById('unitInput').value.trim();
       const name = document.getElementById('nameInput').value.trim();
@@ -181,7 +179,7 @@
 
       const allPossibleSpots = SPOTS_CONFIG[currentTab].spots;
 
-      // 🎬 2 秒數字快速跳動動畫
+      // 🎬 2秒數字快速跳動動畫
       const animInterval = setInterval(() => {
         const randomSpot = allPossibleSpots[Math.floor(Math.random() * allPossibleSpots.length)];
         slotDisplay.innerHTML = `<span class="text-4xl font-black text-amber-300 animate-pulse">${randomSpot}</span>`;
@@ -193,13 +191,11 @@
         const available = getAvailableSpots(typeLabel);
         let spot = "";
 
-        // 公平隨機與槓龜判定：
-        // 1. 如果車位已經空了，直接槓龜
-        // 2. 如果車位還有，設定約 20% 機率直接抽中「槓龜 (手氣不佳)」，其餘隨機抽剩餘車位
+        // 防超抽與隨機槓龜機制
         if (available.length === 0) {
           spot = "槓龜 (已額滿)";
         } else {
-          const isRandomGongge = (Math.random() < 0.25); // 25% 機率在過程中隨機抽中槓龜
+          const isRandomGongge = (Math.random() < 0.25); // 25% 機率在抽籤過程中隨機抽中槓龜
           if (isRandomGongge) {
             spot = "槓龜 (手氣不佳)";
           } else {
@@ -210,7 +206,6 @@
         const time = new Date().toLocaleString("zh-TW", { hour12: false });
         const record = { typeLabel, spot, unit, name, time };
 
-        // 顯示結果
         if (spot.includes('槓龜')) {
           slotDisplay.innerHTML = `<span class="text-2xl font-black text-rose-400">❌ 槓龜</span>`;
           winnerSubtext.innerHTML = `<span class="text-rose-300 font-bold">${unit} ${name}</span> 很抱歉，抽中 ${spot}`;
@@ -224,7 +219,7 @@
 
         document.getElementById('resultActions').classList.remove('hidden');
 
-        // 🚀 穩定寫入 Google 試算表 (POST)
+        // 🚀 確實將資料透過 POST 寫入 Google 試算表
         try {
           await fetch(WEBHOOK_URL, {
             method: 'POST',
@@ -243,7 +238,7 @@
         drawBtn.disabled = false;
         drawBtn.classList.remove('opacity-50', 'cursor-not-allowed');
 
-        // 1.5 秒後向雲端重新同步資料
+        // 1.5 秒後向雲端重新拉取最新資料，確保雲端明細表與看板立刻顯示
         setTimeout(loadCloudData, 1500);
       }, 2000);
     }
