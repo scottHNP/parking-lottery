@@ -84,9 +84,12 @@
     </section>
 
     <section class="bg-white rounded-3xl shadow-sm border border-slate-200 p-6 space-y-4">
-      <div class="flex justify-between items-center">
+      <div class="flex justify-between items-center flex-wrap gap-2">
         <h3 class="text-lg font-black text-slate-800">📜 雲端中籤紀錄明細表</h3>
-        <button onclick="loadCloudData()" class="px-4 py-2 bg-slate-800 text-white text-xs font-bold rounded-xl hover:bg-slate-700">🔄 重新整理同步</button>
+        <div class="flex gap-2">
+          <button onclick="resetCloudRecords()" class="px-4 py-2 bg-rose-50 text-rose-600 border border-rose-200 text-xs font-bold rounded-xl hover:bg-rose-100">🗑️ 重置所有紀錄</button>
+          <button onclick="loadCloudData()" class="px-4 py-2 bg-slate-800 text-white text-xs font-bold rounded-xl hover:bg-slate-700">🔄 重新整理同步</button>
+        </div>
       </div>
       <div class="overflow-x-auto rounded-2xl border border-slate-200">
         <table class="w-full text-left border-collapse">
@@ -104,7 +107,7 @@
   </main>
 
   <script>
-    // ⚠️ 確保這裡維持您剛才複製成功的 Apps Script 網址
+    // ⚠️ 您的 Google Apps Script 網址
     const WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbz8O6Sq52RmlzjAYkLTvzjw6F015VttyKSF-RHxC2yNAMdtTL4sAPvFQWQZKolW5IA2/exec";
 
     const SPOTS_CONFIG = {
@@ -124,7 +127,7 @@
 
       const script = document.createElement('script');
       script.id = scriptId;
-      script.src = `${WEBHOOK_URL}?callback=handleCloudData`;
+      script.src = `${WEBHOOK_URL}?callback=handleCloudData&t=${Date.now()}`;
       document.body.appendChild(script);
     }
 
@@ -150,7 +153,7 @@
       return config.spots.filter(s => !taken.includes(s));
     }
 
-    // 🎲 開始抽籤（包含絢麗跳動動畫）
+    // 🎲 開始抽籤（跳動動畫 + 雲端寫入）
     async function startDraw() {
       const unit = document.getElementById('unitInput').value.trim();
       const name = document.getElementById('nameInput').value.trim();
@@ -173,7 +176,6 @@
         return;
       }
 
-      // 鎖定按鈕避免重複點擊
       const drawBtn = document.getElementById('drawBtn');
       drawBtn.disabled = true;
       drawBtn.classList.add('opacity-50', 'cursor-not-allowed');
@@ -182,16 +184,13 @@
       const winnerSubtext = document.getElementById('winnerSubtext');
       winnerSubtext.textContent = `正在為 ${unit} ${name} 隨機抽籤中...`;
 
-      // 🎬 啟動數字隨機跳動動畫（持續 2 秒）
+      // 🎬 數字隨機跳動動畫（2秒）
       const allPossibleSpots = SPOTS_CONFIG[currentTab].spots;
-      let counter = 0;
       const animInterval = setInterval(() => {
         const randomSpot = allPossibleSpots[Math.floor(Math.random() * allPossibleSpots.length)];
         slotDisplay.innerHTML = `<span class="text-4xl font-black text-amber-300 animate-pulse">${randomSpot}</span>`;
-        counter++;
       }, 90);
 
-      // 2 秒後停止動畫，決定最終中籤車位
       setTimeout(async () => {
         clearInterval(animInterval);
 
@@ -199,7 +198,6 @@
         const time = new Date().toLocaleString("zh-TW", { hour12: false });
         const record = { typeLabel, spot, unit, name, time };
 
-        // 顯示最終中籤結果
         slotDisplay.innerHTML = `<span class="text-4xl font-black text-emerald-400">${spot}</span>`;
         winnerSubtext.innerHTML = `<span class="text-emerald-300 font-bold">${unit} ${name}</span> 成功抽中 ${typeLabel}！`;
         document.getElementById('resultActions').classList.remove('hidden');
@@ -208,7 +206,7 @@
           confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
         }
 
-        // 同步寫入雲端試算表
+        // 🚀 同步寫入雲端試算表 (POST)
         try {
           await fetch(WEBHOOK_URL, {
             method: 'POST',
@@ -224,13 +222,36 @@
         document.getElementById('unitInput').value = '';
         document.getElementById('nameInput').value = '';
 
-        // 解除按鈕鎖定
         drawBtn.disabled = false;
         drawBtn.classList.remove('opacity-50', 'cursor-not-allowed');
 
-        // 1.5 秒後重新向雲端拉取最新看板狀態
+        // 1.5 秒後重新向雲端拉取最新資料
         setTimeout(loadCloudData, 1500);
       }, 2000);
+    }
+
+    // 🗑️ 重置所有紀錄功能
+    function resetCloudRecords() {
+      const pwd = prompt("請輸入管理員重置密碼：");
+      if (pwd === "8888") {
+        if (confirm("確定要清空所有抽籤紀錄嗎？此動作將會清除雲端試算表上的資料！")) {
+          const scriptId = 'jsonp_reset_tag';
+          const oldScript = document.getElementById(scriptId);
+          if (oldScript) oldScript.remove();
+
+          const script = document.createElement('script');
+          script.id = scriptId;
+          script.src = `${WEBHOOK_URL}?callback=handleReset&action=reset&t=${Date.now()}`;
+          document.body.appendChild(script);
+        }
+      } else if (pwd !== null) {
+        alert("密碼錯誤！");
+      }
+    }
+
+    function handleReset(res) {
+      alert("已成功清空所有抽籤紀錄！");
+      loadCloudData();
     }
 
     function shareToLine() {
