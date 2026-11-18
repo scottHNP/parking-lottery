@@ -20,7 +20,7 @@
         <span class="text-2xl">🏢</span>
         <div>
           <h1 class="text-lg sm:text-xl font-bold tracking-wide">大樓停車位抽籤系統</h1>
-          <p class="text-xs text-slate-400">雲端同步即時抽籤（伺服器端隨機與防超抽）</p>
+          <p class="text-xs text-slate-400">雲端同步即時抽籤（防呆穩定版）</p>
         </div>
       </div>
       <div class="flex items-center gap-2 bg-slate-800 border border-slate-700 px-3 py-1.5 rounded-full text-xs">
@@ -144,7 +144,6 @@
       renderAll();
     }
 
-    // 🎲 開始抽籤：結合 2 秒跳動動畫，並直接向雲端請求抽籤結果（由雲端判定隨機、防重複與槓龜）
     function startDraw() {
       const unit = document.getElementById('unitInput').value.trim();
       const name = document.getElementById('nameInput').value.trim();
@@ -155,8 +154,8 @@
         return;
       }
 
-      // 檢查前端已知是否重複
-      const exists = records.find(r => r.unit === unit && r.typeLabel === typeLabel);
+      // 檢查是否重複抽過
+      const exists = records.find(r => String(r.unit).trim() === unit && String(r.typeLabel).trim() === typeLabel);
       if (exists) {
         alert(`住戶 ${unit} 已經抽過${typeLabel}囉！結果為：${exists.spot}`);
         return;
@@ -178,7 +177,7 @@
         slotDisplay.innerHTML = `<span class="text-4xl font-black text-amber-300 animate-pulse">${randomSpot}</span>`;
       }, 90);
 
-      // 2秒後向雲端發送抽籤請求 (使用 JSONP 確保回傳與寫入成功)
+      // 2秒後向雲端發送抽籤請求
       setTimeout(() => {
         clearInterval(animInterval);
 
@@ -189,18 +188,35 @@
         const drawScript = document.createElement('script');
         drawScript.id = scriptId;
         drawScript.src = `${WEBHOOK_URL}?callback=handleDrawResult&action=draw&typeLabel=${encodeURIComponent(typeLabel)}&unit=${encodeURIComponent(unit)}&name=${encodeURIComponent(name)}&t=${Date.now()}`;
+        
+        // 加上防呆逾時機制：如果 5 秒內雲端沒回應，解除按鈕避免永遠卡死
+        window._drawTimeout = setTimeout(() => {
+          if (drawBtn.disabled) {
+            drawBtn.disabled = false;
+            drawBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            alert('連線逾時，請檢查網路或重新整理後再試一次！');
+          }
+        }, 5000);
+
         document.body.appendChild(drawScript);
       }, 2000);
     }
 
-    // 接收雲端抽籤回傳結果
+    // 全域接收雲端抽籤結果（解決卡住的核心）
     function handleDrawResult(res) {
+      if (window._drawTimeout) clearTimeout(window._drawTimeout);
+
       const drawBtn = document.getElementById('drawBtn');
       drawBtn.disabled = false;
       drawBtn.classList.remove('opacity-50', 'cursor-not-allowed');
 
       const slotDisplay = document.getElementById('slotDisplay');
       const winnerSubtext = document.getElementById('winnerSubtext');
+
+      if (!res || res.status === "error") {
+        alert('抽籤發生錯誤，請再試一次。');
+        return;
+      }
 
       if (res.status === "duplicated") {
         alert(`此住戶已經抽過${res.typeLabel}了！結果為：${res.spot}`);
@@ -224,7 +240,7 @@
           }
         }
         document.getElementById('resultActions').classList.remove('hidden');
-        loadCloudData(); // 立即重新整理看板與下方雲端表格
+        loadCloudData();
       }
     }
 
