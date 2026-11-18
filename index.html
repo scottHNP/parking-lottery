@@ -20,7 +20,7 @@
         <span class="text-2xl">🏢</span>
         <div>
           <h1 class="text-lg sm:text-xl font-bold tracking-wide">大樓停車位抽籤系統</h1>
-          <p class="text-xs text-slate-400">雲端同步即時抽籤（防呆穩定版）</p>
+          <p class="text-xs text-slate-400">雲端同步即時抽籤（公平隨機含隨機槓龜機制）</p>
         </div>
       </div>
       <div class="flex items-center gap-2 bg-slate-800 border border-slate-700 px-3 py-1.5 rounded-full text-xs">
@@ -46,7 +46,7 @@
           <div>
             <span id="categoryTag" class="inline-block px-3 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-700 mb-2">目前抽籤：汽車車位</span>
             <h2 class="text-2xl font-black text-slate-800">請填寫住戶資訊</h2>
-            <p class="text-sm text-slate-500 mt-1">每戶每類別限抽一次。車位抽完將自動抽中「槓龜」。</p>
+            <p class="text-sm text-slate-500 mt-1">每戶每類別限抽一次。抽籤過程中隨時可能抽中車位或「槓龜」。</p>
           </div>
           <div class="space-y-4">
             <div>
@@ -154,7 +154,6 @@
         return;
       }
 
-      // 檢查是否重複抽過
       const exists = records.find(r => String(r.unit).trim() === unit && String(r.typeLabel).trim() === typeLabel);
       if (exists) {
         alert(`住戶 ${unit} 已經抽過${typeLabel}囉！結果為：${exists.spot}`);
@@ -177,7 +176,6 @@
         slotDisplay.innerHTML = `<span class="text-4xl font-black text-amber-300 animate-pulse">${randomSpot}</span>`;
       }, 90);
 
-      // 2秒後向雲端發送抽籤請求
       setTimeout(() => {
         clearInterval(animInterval);
 
@@ -189,12 +187,11 @@
         drawScript.id = scriptId;
         drawScript.src = `${WEBHOOK_URL}?callback=handleDrawResult&action=draw&typeLabel=${encodeURIComponent(typeLabel)}&unit=${encodeURIComponent(unit)}&name=${encodeURIComponent(name)}&t=${Date.now()}`;
         
-        // 加上防呆逾時機制：如果 5 秒內雲端沒回應，解除按鈕避免永遠卡死
         window._drawTimeout = setTimeout(() => {
           if (drawBtn.disabled) {
             drawBtn.disabled = false;
             drawBtn.classList.remove('opacity-50', 'cursor-not-allowed');
-            alert('連線逾時，請檢查網路或重新整理後再試一次！');
+            alert('連線逾時，請檢查網路後再試一次！');
           }
         }, 5000);
 
@@ -202,7 +199,6 @@
       }, 2000);
     }
 
-    // 全域接收雲端抽籤結果（解決卡住的核心）
     function handleDrawResult(res) {
       if (window._drawTimeout) clearTimeout(window._drawTimeout);
 
@@ -230,8 +226,8 @@
         document.getElementById('nameInput').value = '';
 
         if (res.spot.includes('槓龜')) {
-          slotDisplay.innerHTML = `<span class="text-2xl font-black text-rose-400">❌ 槓龜 (已額滿)</span>`;
-          winnerSubtext.innerHTML = `<span class="text-rose-300 font-bold">${res.unit} ${res.name}</span> 很抱歉，${res.typeLabel}已額滿`;
+          slotDisplay.innerHTML = `<span class="text-2xl font-black text-rose-400">❌ 槓龜</span>`;
+          winnerSubtext.innerHTML = `<span class="text-rose-300 font-bold">${res.unit} ${res.name}</span> 很抱歉，抽中 ${res.spot}`;
         } else {
           slotDisplay.innerHTML = `<span class="text-4xl font-black text-emerald-400">${res.spot}</span>`;
           winnerSubtext.innerHTML = `<span class="text-emerald-300 font-bold">${res.unit} ${res.name}</span> 成功抽中 ${res.spot}！`;
@@ -286,7 +282,7 @@
       document.getElementById('motoCountBadge').textContent = `剩 ${motoAvail} 格`;
 
       const grid = document.getElementById('spotsGrid');
-      grid.innerHTML = '';
+      grid.innerHTML = ';';
       config.spots.forEach(spot => {
         const winner = records.find(r => r.typeLabel === config.label && r.spot === spot);
         const card = document.createElement('div');
