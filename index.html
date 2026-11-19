@@ -25,7 +25,7 @@
         </div>
       </div>
       <div id="statusBadge" class="flex items-center gap-2 bg-slate-800 border border-slate-700 px-3 py-1.5 rounded-full text-xs">
-        <span id="statusDot" class="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
+        <span id="statusDot" class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse"></span>
         <span id="statusText" class="text-amber-300 font-medium">正在連線雲端...</span>
       </div>
     </div>
@@ -47,12 +47,12 @@
           <div>
             <span id="categoryTag" class="inline-block px-3 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-700 mb-2">目前抽籤：汽車車位</span>
             <h2 class="text-2xl font-black text-slate-800">請填寫住戶資訊</h2>
-            <p class="text-sm text-slate-500 mt-1">每戶每類別限抽一次。抽籤過程有機會抽中車位或「槓龜」。</p>
+            <p class="text-sm text-slate-500 mt-1">每戶每類別限抽一次。抽籤完成後系統將自動寫入並同步雲端。</p>
           </div>
           <div class="space-y-4">
             <div>
               <label class="block text-sm font-bold text-slate-700 mb-1.5">住戶號碼 <span class="text-rose-500">*</span></label>
-              <input type="text" id="unitInput" placeholder="例如：3樓之2" class="w-full px-4 py-3.5 rounded-xl border-2 border-slate-200 focus:border-blue-500 outline-none text-lg font-medium">
+              <input type="text" id="unitInput" placeholder="例如：3樓之2 或 4-5" class="w-full px-4 py-3.5 rounded-xl border-2 border-slate-200 focus:border-blue-500 outline-none text-lg font-medium">
             </div>
             <div>
               <label class="block text-sm font-bold text-slate-700 mb-1.5">住戶姓名 <span class="text-rose-500">*</span></label>
@@ -89,7 +89,7 @@
         <h3 class="text-lg font-black text-slate-800">📜 抽籤紀錄明細表</h3>
         <div class="flex gap-2">
           <button onclick="resetRecords()" class="px-4 py-2 bg-rose-50 text-rose-600 border border-rose-200 text-xs font-bold rounded-xl hover:bg-rose-100">🗑️ 重置所有紀錄</button>
-          <button onclick="syncFromCloud()" class="px-4 py-2 bg-slate-800 text-white text-xs font-bold rounded-xl hover:bg-slate-700">🔄 重新同步雲端</button>
+          <button onclick="syncFromCloud(true)" class="px-4 py-2 bg-slate-800 text-white text-xs font-bold rounded-xl hover:bg-slate-700">🔄 手動立即同步</button>
         </div>
       </div>
       <div class="overflow-x-auto rounded-2xl border border-slate-200">
@@ -120,6 +120,7 @@
     let records = [];
     let lastDrawResult = null;
     let isDrawing = false;
+    let isSyncing = false;
 
     function setCloudStatus(mode, text) {
       const dot = document.getElementById('statusDot');
@@ -160,50 +161,84 @@
       const timer = setTimeout(() => {
         if (finished) return;
         finished = true;
-        cleanup();
+        if (script.parentNode) script.parentNode.removeChild(script);
+        window[cbName] = function() {};
         if (onTimeout) onTimeout();
-      }, 10000);
+      }, 20000);
 
-      function cleanup() {
+      window[cbName] = function(data) {
         clearTimeout(timer);
         if (script.parentNode) script.parentNode.removeChild(script);
         try { delete window[cbName]; } catch (e) { window[cbName] = undefined; }
-      }
-
-      window[cbName] = function(data) {
         if (finished) return;
         finished = true;
-        cleanup();
         if (onSuccess) onSuccess(data);
       };
 
       const query = new URLSearchParams({ ...params, callback: cbName, _: String(Date.now()) });
       script.onerror = function() {
+        clearTimeout(timer);
         if (finished) return;
         finished = true;
-        cleanup();
+        if (script.parentNode) script.parentNode.removeChild(script);
+        window[cbName] = function() {};
         if (onTimeout) onTimeout();
       };
       script.src = `${WEBHOOK_URL}?${query.toString()}`;
       document.body.appendChild(script);
     }
 
-    function syncFromCloud() {
-      setCloudStatus('sync', '正在連線雲端...');
+    // 抽籤完自動寫入雲端，若遇網路波動會自動重試最多 3 次
+    function autoPushDraw(record, attempt = 1) {
+      isSyncing = true;
+      setCloudStatus('sync', attempt === 1 ? '自動寫入雲端中...' : `自動重試同步中 (${attempt}/3)...`);
+
+      sendJsonp(
+        {
+          action: "draw",
+          typeLabel: record.typeLabel,
+          spot: record.spot,
+          unit: record.unit,
+          name: record.name,
+          time: record.time
+        },
+        () => {
+          isSyncing = false;
+          setCloudStatus('ok', '雲端已自動同步');
+          syncFromCloud(false);
+        },
+        () => {
+          if (attempt < 3) {
+            setTimeout(() => autoPushDraw(record, attempt + 1), 2000);
+          } else {
+            isSyncing = false;
+            setCloudStatus('err', '雲端稍忙（稍後自動補同步）');
+          }
+        }
+      );
+    }
+
+    function syncFromCloud(showIndicator = false) {
+      if (isDrawing || isSyncing) return;
+      isSyncing = true;
+      if (showIndicator) setCloudStatus('sync', '正在同步雲端...');
+
       sendJsonp(
         {},
         (data) => {
+          isSyncing = false;
           if (Array.isArray(data)) {
             records = data;
             saveLocal();
             renderAll();
-            setCloudStatus('ok', '雲端已同步');
+            setCloudStatus('ok', '雲端已自動同步');
           } else {
-            setCloudStatus('err', '雲端未連線（本地可用）');
+            setCloudStatus('err', '雲端連線不穩（背景重試中）');
           }
         },
         () => {
-          setCloudStatus('err', '雲端未連線（本地可用）');
+          isSyncing = false;
+          setCloudStatus('err', '雲端連線不穩（背景重試中）');
         }
       );
     }
@@ -304,12 +339,8 @@
         document.getElementById('nameInput').value = '';
         renderAll();
 
-        setCloudStatus('sync', '寫入雲端中...');
-        sendJsonp(
-          { action: "draw", typeLabel, spot, unit, name, time },
-          () => setCloudStatus('ok', '雲端已同步'),
-          () => setCloudStatus('err', '已存本地（雲端待同步）')
-        );
+        // 抽籤結果一出來，立即自動送出並帶自動重試
+        autoPushDraw(record, 1);
 
         isDrawing = false;
         drawBtn.disabled = false;
@@ -334,11 +365,11 @@
       document.getElementById('resultActions').classList.add('hidden');
       renderAll();
 
-      setCloudStatus('sync', '清空雲端中...');
+      setCloudStatus('sync', '自動清空雲端中...');
       sendJsonp(
         { action: "reset" },
         () => { setCloudStatus('ok', '雲端已清空'); alert("已清空本地與雲端紀錄！"); },
-        () => { setCloudStatus('err', '已清空本地（雲端未連線）'); alert("已清空本地紀錄！"); }
+        () => { setCloudStatus('err', '雲端連線不穩'); alert("已清空本地紀錄，請稍後確認雲端狀態。"); }
       );
     }
 
@@ -391,7 +422,12 @@
 
     loadLocal();
     renderAll();
-    syncFromCloud();
+    syncFromCloud(true);
+
+    // 每 15 秒背景自動同步一次，其他住戶抽完不用手動按按鈕就會自動更新畫面
+    setInterval(() => {
+      syncFromCloud(false);
+    }, 15000);
   </script>
 </body>
 </html>
