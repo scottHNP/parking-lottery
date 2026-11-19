@@ -25,7 +25,7 @@
       </div>
       <div id="statusBadge" class="flex items-center gap-2 bg-slate-800 border border-slate-700 px-3 py-1.5 rounded-full text-xs">
         <span id="statusDot" class="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
-        <span id="statusText" class="text-amber-300 font-medium">檢查雲端中...</span>
+        <span id="statusText" class="text-amber-300 font-medium">本地就緒・同步中</span>
       </div>
     </div>
   </header>
@@ -107,7 +107,7 @@
   </main>
 
   <script>
-    const WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbz8O6Sq52RmlzjAYkLTvzjw6F015VttYkSF-RHxC2yNAMdtTL4sAPvFQWQZKolW5IA2/exec";
+    const WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbwGyc7wusndyZpYPNhYEmjD11b7Y9ljhEVh5Dgz5lY/exec";
     const STORAGE_KEY = "building_parking_lottery_v1";
 
     const SPOTS_CONFIG = {
@@ -123,6 +123,7 @@
     function setCloudStatus(ok, text) {
       const dot = document.getElementById('statusDot');
       const label = document.getElementById('statusText');
+      if (!dot || !label) return;
       dot.className = `w-2.5 h-2.5 rounded-full ${ok ? 'bg-emerald-400' : 'bg-rose-400'}`;
       label.className = `font-medium ${ok ? 'text-emerald-300' : 'text-rose-300'}`;
       label.textContent = text;
@@ -188,11 +189,11 @@
             renderAll();
             setCloudStatus(true, "雲端已同步");
           } else {
-            setCloudStatus(false, "雲端格式異常（本地模式）");
+            setCloudStatus(false, "雲端未連線（本地可用）");
           }
         },
         () => {
-          setCloudStatus(false, "雲端未連線（本地模式）");
+          setCloudStatus(false, "雲端未連線（本地可用）");
         }
       );
     }
@@ -293,7 +294,6 @@
         document.getElementById('nameInput').value = '';
         renderAll();
 
-        // 非阻塞背景寫入雲端
         sendJsonp(
           { action: "draw", typeLabel, spot, unit, name, time },
           () => setCloudStatus(true, "雲端已同步"),
