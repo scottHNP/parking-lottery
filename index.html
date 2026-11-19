@@ -20,12 +20,12 @@
         <span class="text-2xl">🏢</span>
         <div>
           <h1 class="text-lg sm:text-xl font-bold tracking-wide">大樓停車位抽籤系統</h1>
-          <p class="text-xs text-slate-400">跨裝置雲端同步即時抽籤系統</p>
+          <p class="text-xs text-slate-400">汽車與機車車位即時抽籤系統</p>
         </div>
       </div>
-      <div class="flex items-center gap-2 bg-slate-800 border border-slate-700 px-3 py-1.5 rounded-full text-xs">
-        <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
-        <span class="text-emerald-300 font-medium">雲端連線同步中</span>
+      <div id="statusBadge" class="flex items-center gap-2 bg-slate-800 border border-slate-700 px-3 py-1.5 rounded-full text-xs">
+        <span id="statusDot" class="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
+        <span id="statusText" class="text-amber-300 font-medium">檢查雲端中...</span>
       </div>
     </div>
   </header>
@@ -33,10 +33,10 @@
   <main class="max-w-4xl mx-auto px-4 mt-6 space-y-6">
     <div class="grid grid-cols-2 gap-3 bg-white p-2 rounded-2xl shadow-sm border border-slate-200">
       <button id="tabCar" onclick="switchTab('car')" class="flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl font-bold text-base transition-all bg-blue-600 text-white shadow-md">
-        <span>🚗</span><span>汽車車位</span><span id="carCountBadge" class="text-xs px-2 py-0.5 rounded-full bg-blue-800 text-blue-100">載入中</span>
+        <span>🚗</span><span>汽車車位</span><span id="carCountBadge" class="text-xs px-2 py-0.5 rounded-full bg-blue-800 text-blue-100">剩 3 格</span>
       </button>
       <button id="tabMoto" onclick="switchTab('moto')" class="flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl font-bold text-base transition-all text-slate-600 hover:bg-slate-100">
-        <span>🛵</span><span>機車車位</span><span id="motoCountBadge" class="text-xs px-2 py-0.5 rounded-full bg-slate-200 text-slate-700">載入中</span>
+        <span>🛵</span><span>機車車位</span><span id="motoCountBadge" class="text-xs px-2 py-0.5 rounded-full bg-slate-200 text-slate-700">剩 9 格</span>
       </button>
     </div>
 
@@ -46,7 +46,7 @@
           <div>
             <span id="categoryTag" class="inline-block px-3 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-700 mb-2">目前抽籤：汽車車位</span>
             <h2 class="text-2xl font-black text-slate-800">請填寫住戶資訊</h2>
-            <p class="text-sm text-slate-500 mt-1">每戶每類別限抽一次。抽籤過程隨時可能抽中車位或「槓龜」。</p>
+            <p class="text-sm text-slate-500 mt-1">每戶每類別限抽一次。抽籤過程有機會抽中車位或「槓龜」。</p>
           </div>
           <div class="space-y-4">
             <div>
@@ -80,4 +80,306 @@
 
     <section class="bg-white rounded-3xl shadow-sm border border-slate-200 p-6">
       <h3 id="boardTitle" class="text-lg font-black text-slate-800 mb-4">汽車車位即時狀態看板</h3>
-      <div id="spotsGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap
+      <div id="spotsGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3"></div>
+    </section>
+
+    <section class="bg-white rounded-3xl shadow-sm border border-slate-200 p-6 space-y-4">
+      <div class="flex justify-between items-center flex-wrap gap-2">
+        <h3 class="text-lg font-black text-slate-800">📜 抽籤紀錄明細表</h3>
+        <div class="flex gap-2">
+          <button onclick="resetRecords()" class="px-4 py-2 bg-rose-50 text-rose-600 border border-rose-200 text-xs font-bold rounded-xl hover:bg-rose-100">🗑️ 重置所有紀錄</button>
+          <button onclick="syncFromCloud()" class="px-4 py-2 bg-slate-800 text-white text-xs font-bold rounded-xl hover:bg-slate-700">🔄 重新同步雲端</button>
+        </div>
+      </div>
+      <div class="overflow-x-auto rounded-2xl border border-slate-200">
+        <table class="w-full text-left border-collapse">
+          <thead>
+            <tr class="bg-slate-50 text-slate-600 text-xs uppercase border-b border-slate-200">
+              <th class="py-3 px-4">類別</th><th class="py-3 px-4">車位</th><th class="py-3 px-4">戶號</th><th class="py-3 px-4">姓名</th><th class="py-3 px-4">時間</th>
+            </tr>
+          </thead>
+          <tbody id="recordsTableBody" class="divide-y divide-slate-100 text-sm">
+            <tr><td colspan="5" class="py-6 text-center text-slate-400">尚無抽籤紀錄</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbz8O6Sq52RmlzjAYkLTvzjw6F015VttYkSF-RHxC2yNAMdtTL4sAPvFQWQZKolW5IA2/exec";
+    const STORAGE_KEY = "building_parking_lottery_v1";
+
+    const SPOTS_CONFIG = {
+      car: { label: '汽車車位', spots: ['1號', '1-1號', '1-2號'] },
+      moto: { label: '機車車位', spots: ['1(室外)', '2(室外)', '3(室外)', '4(室外)', '5(室外)', '6(室外)', '22(室內)', '37(室內)', '38(室內)'] }
+    };
+
+    let currentTab = 'car';
+    let records = [];
+    let lastDrawResult = null;
+    let isDrawing = false;
+
+    function setCloudStatus(ok, text) {
+      const dot = document.getElementById('statusDot');
+      const label = document.getElementById('statusText');
+      dot.className = `w-2.5 h-2.5 rounded-full ${ok ? 'bg-emerald-400' : 'bg-rose-400'}`;
+      label.className = `font-medium ${ok ? 'text-emerald-300' : 'text-rose-300'}`;
+      label.textContent = text;
+    }
+
+    function saveLocal() {
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(records)); } catch (e) {}
+    }
+
+    function loadLocal() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        records = raw ? JSON.parse(raw) : [];
+        if (!Array.isArray(records)) records = [];
+      } catch (e) {
+        records = [];
+      }
+    }
+
+    function sendJsonp(params, onSuccess, onTimeout) {
+      const cbName = "cb_" + Date.now() + "_" + Math.floor(Math.random() * 100000);
+      const script = document.createElement("script");
+      let finished = false;
+
+      const timer = setTimeout(() => {
+        if (finished) return;
+        finished = true;
+        cleanup();
+        if (onTimeout) onTimeout();
+      }, 4500);
+
+      function cleanup() {
+        clearTimeout(timer);
+        if (script.parentNode) script.parentNode.removeChild(script);
+        try { delete window[cbName]; } catch (e) { window[cbName] = undefined; }
+      }
+
+      window[cbName] = function(data) {
+        if (finished) return;
+        finished = true;
+        cleanup();
+        if (onSuccess) onSuccess(data);
+      };
+
+      const query = new URLSearchParams({ ...params, callback: cbName, _: String(Date.now()) });
+      script.onerror = function() {
+        if (finished) return;
+        finished = true;
+        cleanup();
+        if (onTimeout) onTimeout();
+      };
+      script.src = `${WEBHOOK_URL}?${query.toString()}`;
+      document.body.appendChild(script);
+    }
+
+    function syncFromCloud() {
+      sendJsonp(
+        {},
+        (data) => {
+          if (Array.isArray(data)) {
+            records = data;
+            saveLocal();
+            renderAll();
+            setCloudStatus(true, "雲端已同步");
+          } else {
+            setCloudStatus(false, "雲端格式異常（本地模式）");
+          }
+        },
+        () => {
+          setCloudStatus(false, "雲端未連線（本地模式）");
+        }
+      );
+    }
+
+    function switchTab(tab) {
+      currentTab = tab;
+      const isCar = tab === 'car';
+      document.getElementById('tabCar').className = isCar
+        ? 'flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl font-bold text-base bg-blue-600 text-white shadow-md'
+        : 'flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl font-bold text-base text-slate-600 hover:bg-slate-100';
+      document.getElementById('tabMoto').className = !isCar
+        ? 'flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl font-bold text-base bg-teal-600 text-white shadow-md'
+        : 'flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl font-bold text-base text-slate-600 hover:bg-slate-100';
+      document.getElementById('categoryTag').textContent = `目前抽籤：${SPOTS_CONFIG[tab].label}`;
+      document.getElementById('categoryTag').className = isCar
+        ? 'inline-block px-3 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-700 mb-2'
+        : 'inline-block px-3 py-1 rounded-full text-xs font-bold bg-teal-100 text-teal-700 mb-2';
+      renderAll();
+    }
+
+    function getAvailableSpots(typeLabel) {
+      const config = Object.values(SPOTS_CONFIG).find(c => c.label === typeLabel);
+      if (!config) return [];
+      const taken = records
+        .filter(r => r.typeLabel === typeLabel && !String(r.spot).includes('槓龜'))
+        .map(r => r.spot);
+      return config.spots.filter(s => !taken.includes(s));
+    }
+
+    function startDraw() {
+      if (isDrawing) return;
+
+      const unit = document.getElementById('unitInput').value.trim();
+      const name = document.getElementById('nameInput').value.trim();
+      const typeLabel = SPOTS_CONFIG[currentTab].label;
+
+      if (!unit || !name) {
+        alert('請填寫住戶號碼與姓名');
+        return;
+      }
+
+      const exists = records.find(
+        r => String(r.unit).trim() === unit && String(r.typeLabel).trim() === typeLabel
+      );
+      if (exists) {
+        alert(`住戶 ${unit} 已經抽過${typeLabel}囉！結果為：${exists.spot}`);
+        return;
+      }
+
+      isDrawing = true;
+      const drawBtn = document.getElementById('drawBtn');
+      drawBtn.disabled = true;
+      drawBtn.classList.add('opacity-50', 'cursor-not-allowed');
+
+      const slotDisplay = document.getElementById('slotDisplay');
+      const winnerSubtext = document.getElementById('winnerSubtext');
+      winnerSubtext.textContent = `正在為 ${unit} ${name} 隨機抽籤中...`;
+
+      const animPool = [...SPOTS_CONFIG[currentTab].spots, '槓龜'];
+      const animInterval = setInterval(() => {
+        const pick = animPool[Math.floor(Math.random() * animPool.length)];
+        slotDisplay.innerHTML = `<span class="text-4xl font-black text-amber-300 animate-pulse">${pick}</span>`;
+      }, 90);
+
+      setTimeout(() => {
+        clearInterval(animInterval);
+
+        const available = getAvailableSpots(typeLabel);
+        let spot = "";
+        if (available.length === 0) {
+          spot = "槓龜 (已額滿)";
+        } else if (Math.random() < 0.25) {
+          spot = "槓龜 (未中籤)";
+        } else {
+          spot = available[Math.floor(Math.random() * available.length)];
+        }
+
+        const time = new Date().toLocaleString("zh-TW", { hour12: false });
+        const record = { typeLabel, spot, unit, name, time };
+
+        records.push(record);
+        saveLocal();
+        lastDrawResult = record;
+
+        if (spot.includes('槓龜')) {
+          slotDisplay.innerHTML = `<span class="text-2xl font-black text-rose-400">❌ ${spot}</span>`;
+          winnerSubtext.innerHTML = `<span class="text-rose-300 font-bold">${unit} ${name}</span> 本次抽中 ${spot}`;
+        } else {
+          slotDisplay.innerHTML = `<span class="text-4xl font-black text-emerald-400">${spot}</span>`;
+          winnerSubtext.innerHTML = `<span class="text-emerald-300 font-bold">${unit} ${name}</span> 成功抽中 ${spot}！`;
+          if (typeof confetti === 'function') {
+            confetti({ particleCount: 90, spread: 70, origin: { y: 0.6 } });
+          }
+        }
+
+        document.getElementById('resultActions').classList.remove('hidden');
+        document.getElementById('unitInput').value = '';
+        document.getElementById('nameInput').value = '';
+        renderAll();
+
+        // 非阻塞背景寫入雲端
+        sendJsonp(
+          { action: "draw", typeLabel, spot, unit, name, time },
+          () => setCloudStatus(true, "雲端已同步"),
+          () => setCloudStatus(false, "已存本地（雲端待同步）")
+        );
+
+        isDrawing = false;
+        drawBtn.disabled = false;
+        drawBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+      }, 1800);
+    }
+
+    function resetRecords() {
+      const pwd = prompt("請輸入管理員重置密碼：");
+      if (pwd === null) return;
+      if (pwd !== "8888") {
+        alert("密碼錯誤！");
+        return;
+      }
+      if (!confirm("確定要清空所有抽籤紀錄嗎？")) return;
+
+      records = [];
+      saveLocal();
+      lastDrawResult = null;
+      document.getElementById('slotDisplay').innerHTML = `<span class="text-3xl font-black text-slate-400">準備抽籤</span>`;
+      document.getElementById('winnerSubtext').textContent = `請輸入資料後點擊抽籤`;
+      document.getElementById('resultActions').classList.add('hidden');
+      renderAll();
+
+      sendJsonp(
+        { action: "reset" },
+        () => { setCloudStatus(true, "雲端已清空"); alert("已清空本地與雲端紀錄！"); },
+        () => { setCloudStatus(false, "已清空本地（雲端未連線）"); alert("已清空本地紀錄！"); }
+      );
+    }
+
+    function shareToLine() {
+      if (!lastDrawResult) return;
+      const text = `【大樓停車位抽籤結果】\n類別：${lastDrawResult.typeLabel}\n戶號：${lastDrawResult.unit}\n姓名：${lastDrawResult.name}\n抽籤結果：${lastDrawResult.spot}`;
+      window.open(`https://line.me/R/msg/text/?${encodeURIComponent(text)}`, '_blank');
+    }
+
+    function renderAll() {
+      const config = SPOTS_CONFIG[currentTab];
+      document.getElementById('boardTitle').textContent = `${config.label}即時狀態看板`;
+
+      const carAvail = SPOTS_CONFIG.car.spots.length - records.filter(r => r.typeLabel === '汽車車位' && !String(r.spot).includes('槓龜')).length;
+      const motoAvail = SPOTS_CONFIG.moto.spots.length - records.filter(r => r.typeLabel === '機車車位' && !String(r.spot).includes('槓龜')).length;
+      document.getElementById('carCountBadge').textContent = `剩 ${carAvail} 格`;
+      document.getElementById('motoCountBadge').textContent = `剩 ${motoAvail} 格`;
+
+      const grid = document.getElementById('spotsGrid');
+      grid.innerHTML = '';
+      config.spots.forEach(spot => {
+        const winner = records.find(r => r.typeLabel === config.label && r.spot === spot);
+        const card = document.createElement('div');
+        if (winner) {
+          card.className = 'p-3.5 rounded-2xl bg-slate-100 border border-slate-300 flex flex-col justify-between';
+          card.innerHTML = `<div class="flex justify-between"><span class="font-black text-slate-400 line-through">${spot}</span><span class="text-[11px] font-bold px-2 py-0.5 rounded bg-slate-200 text-slate-600">已抽出</span></div><div class="mt-2 text-xs font-bold text-slate-700 truncate">${winner.unit} ${winner.name}</div>`;
+        } else {
+          card.className = 'p-3.5 rounded-2xl bg-emerald-50/70 border border-emerald-300 flex flex-col justify-between';
+          card.innerHTML = `<div class="flex justify-between"><span class="font-black text-emerald-900">${spot}</span><span class="text-[11px] font-bold px-2 py-0.5 rounded bg-emerald-200 text-emerald-800">可抽籤</span></div><div class="mt-2 text-xs text-emerald-600">等待中</div>`;
+        }
+        grid.appendChild(card);
+      });
+
+      const tbody = document.getElementById('recordsTableBody');
+      const filtered = records.filter(r => r.typeLabel === config.label);
+      if (filtered.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="py-6 text-center text-slate-400">尚無抽籤紀錄</td></tr>';
+        return;
+      }
+      tbody.innerHTML = filtered.map(r => `
+        <tr class="hover:bg-slate-50 transition">
+          <td class="py-3 px-4"><span class="px-2 py-0.5 rounded-full text-xs font-bold ${r.typeLabel === '汽車車位' ? 'bg-blue-100 text-blue-700' : 'bg-teal-100 text-teal-700'}">${r.typeLabel}</span></td>
+          <td class="py-3 px-4 font-black ${String(r.spot).includes('槓龜') ? 'text-rose-500' : ''}">${r.spot}</td>
+          <td class="py-3 px-4 font-bold text-slate-700">${r.unit}</td>
+          <td class="py-3 px-4 text-slate-700">${r.name}</td>
+          <td class="py-3 px-4 text-xs text-slate-500">${r.time}</td>
+        </tr>
+      `).join('');
+    }
+
+    loadLocal();
+    renderAll();
+    syncFromCloud();
+  </script>
+</body>
+</html>
