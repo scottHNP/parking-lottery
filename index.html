@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>大樓停車位抽籤系統</title>
+  <link rel="icon" href="data:,">
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
   <style>
@@ -25,7 +26,7 @@
       </div>
       <div id="statusBadge" class="flex items-center gap-2 bg-slate-800 border border-slate-700 px-3 py-1.5 rounded-full text-xs">
         <span id="statusDot" class="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
-        <span id="statusText" class="text-amber-300 font-medium">本地就緒・同步中</span>
+        <span id="statusText" class="text-amber-300 font-medium">正在連線雲端...</span>
       </div>
     </div>
   </header>
@@ -120,12 +121,20 @@
     let lastDrawResult = null;
     let isDrawing = false;
 
-    function setCloudStatus(ok, text) {
+    function setCloudStatus(mode, text) {
       const dot = document.getElementById('statusDot');
       const label = document.getElementById('statusText');
       if (!dot || !label) return;
-      dot.className = `w-2.5 h-2.5 rounded-full ${ok ? 'bg-emerald-400' : 'bg-rose-400'}`;
-      label.className = `font-medium ${ok ? 'text-emerald-300' : 'text-rose-300'}`;
+      if (mode === 'ok') {
+        dot.className = 'w-2.5 h-2.5 rounded-full bg-emerald-400';
+        label.className = 'font-medium text-emerald-300';
+      } else if (mode === 'sync') {
+        dot.className = 'w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse';
+        label.className = 'font-medium text-amber-300';
+      } else {
+        dot.className = 'w-2.5 h-2.5 rounded-full bg-rose-400';
+        label.className = 'font-medium text-rose-300';
+      }
       label.textContent = text;
     }
 
@@ -153,7 +162,7 @@
         finished = true;
         cleanup();
         if (onTimeout) onTimeout();
-      }, 4500);
+      }, 10000);
 
       function cleanup() {
         clearTimeout(timer);
@@ -180,6 +189,7 @@
     }
 
     function syncFromCloud() {
+      setCloudStatus('sync', '正在連線雲端...');
       sendJsonp(
         {},
         (data) => {
@@ -187,13 +197,13 @@
             records = data;
             saveLocal();
             renderAll();
-            setCloudStatus(true, "雲端已同步");
+            setCloudStatus('ok', '雲端已同步');
           } else {
-            setCloudStatus(false, "雲端未連線（本地可用）");
+            setCloudStatus('err', '雲端未連線（本地可用）');
           }
         },
         () => {
-          setCloudStatus(false, "雲端未連線（本地可用）");
+          setCloudStatus('err', '雲端未連線（本地可用）');
         }
       );
     }
@@ -294,10 +304,11 @@
         document.getElementById('nameInput').value = '';
         renderAll();
 
+        setCloudStatus('sync', '寫入雲端中...');
         sendJsonp(
           { action: "draw", typeLabel, spot, unit, name, time },
-          () => setCloudStatus(true, "雲端已同步"),
-          () => setCloudStatus(false, "已存本地（雲端待同步）")
+          () => setCloudStatus('ok', '雲端已同步'),
+          () => setCloudStatus('err', '已存本地（雲端待同步）')
         );
 
         isDrawing = false;
@@ -323,10 +334,11 @@
       document.getElementById('resultActions').classList.add('hidden');
       renderAll();
 
+      setCloudStatus('sync', '清空雲端中...');
       sendJsonp(
         { action: "reset" },
-        () => { setCloudStatus(true, "雲端已清空"); alert("已清空本地與雲端紀錄！"); },
-        () => { setCloudStatus(false, "已清空本地（雲端未連線）"); alert("已清空本地紀錄！"); }
+        () => { setCloudStatus('ok', '雲端已清空'); alert("已清空本地與雲端紀錄！"); },
+        () => { setCloudStatus('err', '已清空本地（雲端未連線）'); alert("已清空本地紀錄！"); }
       );
     }
 
