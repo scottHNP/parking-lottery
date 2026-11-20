@@ -71,8 +71,8 @@
               <span class="text-3xl font-black text-slate-400">準備抽籤</span>
             </div>
             <div id="winnerSubtext" class="text-sm text-slate-400 min-h-[24px] mt-2">請輸入資料後點擊抽籤</div>
-            <div id="resultActions" class="hidden mt-5 pt-4 border-t border-slate-700 space-y-2">
-              <button onclick="shareToLine()" class="w-full py-3 px-4 rounded-xl bg-[#06C755] text-white font-bold text-base hover:opacity-95">📲 一鍵透過 LINE 回傳結果</button>
+            <div id="resultNote" class="hidden mt-4 pt-3 border-t border-slate-700 text-xs text-slate-300">
+              📸 請自行截圖留存或回傳抽籤結果
             </div>
           </div>
         </div>
@@ -118,7 +118,6 @@
 
     let currentTab = 'car';
     let records = [];
-    let lastDrawResult = null;
     let isDrawing = false;
     let isSyncing = false;
 
@@ -188,7 +187,6 @@
       document.body.appendChild(script);
     }
 
-    // 抽籤完自動寫入雲端，若遇網路波動會自動重試最多 3 次
     function autoPushDraw(record, attempt = 1) {
       isSyncing = true;
       setCloudStatus('sync', attempt === 1 ? '自動寫入雲端中...' : `自動重試同步中 (${attempt}/3)...`);
@@ -321,7 +319,6 @@
 
         records.push(record);
         saveLocal();
-        lastDrawResult = record;
 
         if (spot.includes('槓龜')) {
           slotDisplay.innerHTML = `<span class="text-2xl font-black text-rose-400">❌ ${spot}</span>`;
@@ -334,12 +331,11 @@
           }
         }
 
-        document.getElementById('resultActions').classList.remove('hidden');
+        document.getElementById('resultNote').classList.remove('hidden');
         document.getElementById('unitInput').value = '';
         document.getElementById('nameInput').value = '';
         renderAll();
 
-        // 抽籤結果一出來，立即自動送出並帶自動重試
         autoPushDraw(record, 1);
 
         isDrawing = false;
@@ -359,10 +355,9 @@
 
       records = [];
       saveLocal();
-      lastDrawResult = null;
       document.getElementById('slotDisplay').innerHTML = `<span class="text-3xl font-black text-slate-400">準備抽籤</span>`;
       document.getElementById('winnerSubtext').textContent = `請輸入資料後點擊抽籤`;
-      document.getElementById('resultActions').classList.add('hidden');
+      document.getElementById('resultNote').classList.add('hidden');
       renderAll();
 
       setCloudStatus('sync', '自動清空雲端中...');
@@ -371,12 +366,6 @@
         () => { setCloudStatus('ok', '雲端已清空'); alert("已清空本地與雲端紀錄！"); },
         () => { setCloudStatus('err', '雲端連線不穩'); alert("已清空本地紀錄，請稍後確認雲端狀態。"); }
       );
-    }
-
-    function shareToLine() {
-      if (!lastDrawResult) return;
-      const text = `【大樓停車位抽籤結果】\n類別：${lastDrawResult.typeLabel}\n戶號：${lastDrawResult.unit}\n姓名：${lastDrawResult.name}\n抽籤結果：${lastDrawResult.spot}`;
-      window.open(`https://line.me/R/msg/text/?${encodeURIComponent(text)}`, '_blank');
     }
 
     function renderAll() {
@@ -424,7 +413,6 @@
     renderAll();
     syncFromCloud(true);
 
-    // 每 15 秒背景自動同步一次，其他住戶抽完不用手動按按鈕就會自動更新畫面
     setInterval(() => {
       syncFromCloud(false);
     }, 15000);
